@@ -43,8 +43,8 @@ object main {
       .option("startingOffsets", "latest")
       .load()
 
-//    println("Printing Schema of transaction_detail_df: ")
-//    meetup_rsvp_df.writeStream.format("console").start().awaitTermination()
+  //      println("Printing Schema of transaction_detail_df: ")
+  //      meetup_rsvp_df.writeStream.format("console").start().awaitTermination()
 
     // Defining schema
     val meetup_rsvp_message_schema = StructType(Array(
@@ -74,7 +74,7 @@ object main {
         StructField("group_topics", ArrayType(StructType(Array(
           StructField("urlkey", StringType),
           StructField("topic_name", StringType)
-        )), true)),
+        )))),
         StructField("group_city", StringType),
         StructField("group_country", StringType),
         StructField("group_id", StringType),
@@ -107,27 +107,30 @@ object main {
 //    println("Writing stream to console")
 //    meetup_rsvp_df_4.writeStream.format("console").start().awaitTermination()
 
-//    val spark_mongodb_output_uri = "mongodb://" + mongodb_user_name + ":" + mongodb_password + "@" + mongodb_host_name + ":" + mongodb_port_no + "/" + mongodb_database_name + "." + mongodb_collection_name
     val spark_mongodb_output_uri = "mongodb://" + mongodb_host_name + ":" + mongodb_port_no + "/" + mongodb_database_name + "." + mongodb_collection_name
 
     println("***** Saving spark stream to " + spark_mongodb_output_uri + " *****")
 
-    // Writing Meetup RSVP Dataframe into MongoDB Collection Starts Here
-    meetup_rsvp_df_4.writeStream
-      .trigger(Trigger.ProcessingTime("10 seconds"))
-      .outputMode(("update"))
-      .foreachBatch{ (batchDF: DataFrame, batchId: Long) => {
-        val batchDataFrame = batchDF.withColumn("batch_id", lit(batchId))
+  // Writing Meetup RSVP Dataframe into MongoDB Collection Starts Here
+    val query = meetup_rsvp_df_4.writeStream
+    .trigger(Trigger.ProcessingTime("20 seconds"))
+    .outputMode("update")
+    .foreachBatch{ (batchDF: DataFrame, batchId: Long) =>
+      val batchDataFrame = batchDF.withColumn("batch_id", lit(batchId))
 
-        // Transform batchDF and write it to sink/target/persistent storage
-        // Write data from spark dataframe to database
-        batchDataFrame.write
-          .format("mongo")
-          .mode("append")
-          .option("uri", spark_mongodb_output_uri)
-          .option("database", mongodb_database_name)
-          .option("collection", mongodb_collection_name)
-          .save()
-      }}.start()
+      println("Writing Following DataFrame to Mongo Collection: ")
+      println(batchDF)
+      // Transform batchDF and write it to sink/target/persistent storage
+      // Write data from spark dataframe to database
+      batchDataFrame.write
+        .format("mongo")
+        .mode("append")
+        .option("uri", spark_mongodb_output_uri)
+        .option("database", mongodb_database_name)
+        .option("collection", mongodb_collection_name)
+        .save()
+    }.start()
+
+    query.awaitTermination()
   }
 }
