@@ -4,6 +4,7 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.streaming.Trigger
+import org.codehaus.janino.Java
 
 object main {
   def main(args: Array[String]): Unit = {
@@ -118,8 +119,6 @@ object main {
     .foreachBatch{ (batchDF: DataFrame, batchId: Long) =>
       val batchDataFrame = batchDF.withColumn("batch_id", lit(batchId))
 
-      println("Writing Following DataFrame to Mongo Collection: ")
-      println(batchDF)
       // Transform batchDF and write it to sink/target/persistent storage
       // Write data from spark dataframe to database
       batchDataFrame.write
@@ -131,6 +130,20 @@ object main {
         .save()
     }.start()
 
-    query.awaitTermination()
+//    query.awaitTermination()
+
+    // Aggregation - find response_count bby grouping group_name,
+    // group_country, group_state, group_city, group_lat, group_lon, response
+    val meetup_rsvp_df_aggregated = meetup_rsvp_df_4.groupBy("group_name", "group_country",
+    "group_state", "group_city", "group_lat", "group_lon", "response")
+      .agg(count(col("response")).as("response_count"))
+
+    println("Schema of aggregated data")
+    meetup_rsvp_df_aggregated.printSchema()
+
+    // Writing aggregated response into console for debugging purpose
+    meetup_rsvp_df_aggregated.writeStream.format("console").outputMode("update").option("truncate", "false").start().awaitTermination()
+
+    val mysql_properties = new Java.utils
   }
 }
