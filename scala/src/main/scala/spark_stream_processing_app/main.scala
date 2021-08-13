@@ -4,6 +4,7 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.streaming.Trigger
+import java.util.Properties
 
 object main {
   def main(args: Array[String]): Unit = {
@@ -16,9 +17,10 @@ object main {
     val mysql_port_no = "3306"
     val mysql_user_name = "root"
     val mysql_password = "rootuser"
-    val mysql_database_name = "meetup_rsvp_db"
+    val mysql_database_name = "meetup_rsvp_database"
     val mysql_driver_class = "com.mysql.jdbc.Driver"
-    val mysql_jdbc_url = "jdbc:mysql://" + mysql_host_name + ":" + mysql_port_no + "/" + mysql_database_name
+    val mysql_jdbc_url = "jdbc:mysql://" + mysql_host_name + ":" + mysql_port_no + "/" + mysql_database_name + "?characterEncoding=utf8"
+    val mysql_table_name = "meetup_rsvp_message_agg_detail_tbl"
 
     val mongodb_host_name = "127.0.0.1"
     val mongodb_port_no = "27017"
@@ -44,7 +46,7 @@ object main {
       .load()
 
   //      println("Printing Schema of transaction_detail_df: ")
-  //      meetup_rsvp_df.writeStream.format("console").start().awaitTermination()
+//    meetup_rsvp_df.writeStream.format("console").start().awaitTermination()
 
     // Defining schema
     val meetup_rsvp_message_schema = StructType(Array(
@@ -112,14 +114,13 @@ object main {
     println("***** Saving spark stream to " + spark_mongodb_output_uri + " *****")
 
   // Writing Meetup RSVP Dataframe into MongoDB Collection Starts Here
-    val query = meetup_rsvp_df_4.writeStream
+    val mongo_query = meetup_rsvp_df_4.writeStream
     .trigger(Trigger.ProcessingTime("20 seconds"))
     .outputMode("update")
     .foreachBatch{ (batchDF: DataFrame, batchId: Long) =>
       val batchDataFrame = batchDF.withColumn("batch_id", lit(batchId))
 
-      println("Writing Following DataFrame to Mongo Collection: ")
-      println(batchDF)
+      println("Saving Batch ID: " + lit(batchId) + " to MongoDB")
       // Transform batchDF and write it to sink/target/persistent storage
       // Write data from spark dataframe to database
       batchDataFrame.write
@@ -131,6 +132,49 @@ object main {
         .save()
     }.start()
 
-    query.awaitTermination()
+//    query.awaitTermination()
+
+    // Aggregation - find response_count bby grouping group_name,
+    // group_country, group_state, group_city, group_lat, group_lon, response
+    val meetup_rsvp_df_aggregated = meetup_rsvp_df_4.groupBy("group_name", "group_country",
+    "group_state", "group_city", "group_lat", "group_lon", "response")
+      .agg(count(col("response")).as("response_count"))
+
+    println("Schema of aggregated data")
+    meetup_rsvp_df_aggregated.printSchema()
+
+    println("***** Saving spark stream to " + mysql_jdbc_url + " *****")
+
+    // Writing aggregated response into console for debugging purpose
+//    val meetup_rsvp_aggregated_transaction = meetup_rsvp_df_aggregated.writeStream.format("console").outputMode("update").option("truncate", "false").start()
+
+    val mysql_properties = new Properties()
+    mysql_properties.put("driver", mysql_driver_class)
+    mysql_properties.put("user", mysql_user_name)
+    mysql_properties.put("password", mysql_password)
+
+    // Writing aggregated data frame to MySQL DB
+    meetup_rsvp_df_aggregated.writeStream
+      .trigger(Trigger.ProcessingTime("20 seconds"))
+      .outputMode("update")
+      .foreachBatch{ (batchDF: DataFrame, batchId: Long) =>
+        val batchDataFrame = batchDF.withColumn("batch_id", lit(batchId))
+
+        println("Saving Batch ID: " + lit(batchId) + " to MySQL")
+
+        // Transform batchDF and write it to sink/target/persistent storage
+        // Write data from spark dataframe to database
+        foreach_batch_function(batchDataFrame, batchId, mysql_jdbc_url, mysql_database_name, mysql_table_name, mysql_properties)
+      }.start().awaitTermination()
+
+//    sql_query.awaitTermination()
+//    meetup_rsvp_aggregated_transaction.awaitTermination();
+
+  }
+
+  def foreach_batch_function(df: DataFrame, epoch_id: Long, mysql_jdbc_url: String, mysql_database_name: String, mysql_table_name: String, mysql_properties: Properties): Unit = {
+    df.write
+      .mode("append")
+      .jdbc(mysql_jdbc_url, mysql_table_name, mysql_properties)
   }
 }

@@ -12,7 +12,10 @@ kafka_bootstrap_server = "localhost:9092"
 if __name__ == "__main__":
     print("***** Kafka Producer Application Started *****")
 
-    kafka_producer_obj = KafkaProducer(bootstrap_servers=kafka_bootstrap_server, value_serializer=lambda x: dumps(x).encode('utf-8'))
+    try:
+        kafka_producer_obj = KafkaProducer(bootstrap_servers=kafka_bootstrap_server, value_serializer=lambda x: dumps(x).encode('utf-8'))
+    except Exception as ex:
+        print("Please run your Kafka zookeeper and server to get started to publishes messages to cluster")
 
     while True:
         try:
