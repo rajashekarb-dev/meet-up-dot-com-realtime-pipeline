@@ -1,4 +1,4 @@
-# meet-up-dot-com-realtime-pipeline
+# Meetup.com Realtime Data Pipeline
  
 ## Prerequisites:
 * Scala (2.12.6)
